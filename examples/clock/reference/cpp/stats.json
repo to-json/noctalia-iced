@@ -1,0 +1,7 @@
+{
+  "frames_presented": 85,
+  "popup_seen": false,
+  "passed": true,
+  "snapshots": [{"file": "tall.png", "ok": true}, {"file": "tall-active.png", "ok": true}],
+  "failures": []
+}

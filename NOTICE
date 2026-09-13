@@ -1,0 +1,11 @@
+noctalia-iced brings Noctalia's design language (palette roles and style tokens from
+https://github.com/noctalia-dev/noctalia-shell, MIT) to iced. It was extracted from libnoctalia-ui,
+Noctalia's UI toolkit as a standalone library (see LICENSE).
+
+Bundled third-party components:
+
+- Tabler Icons (crates/noctalia-iced/assets): MIT, https://github.com/tabler/tabler-icons
+- winit 0.30.13 (third_party/rust/winit, patched): Apache-2.0, https://github.com/rust-windowing/winit
+- iced_core 0.14.0 and iced_winit 0.14.1 (third_party/rust, patched): MIT, https://github.com/iced-rs/iced
+
+examples/clock/reference holds snapshots of libnoctalia-ui's C++ noctalia-clock, for comparison.

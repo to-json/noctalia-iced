@@ -1,0 +1,22 @@
+[package]
+name = "noctalia-clock-iced"
+description = "The noctalia-clock demo on iced, styled with noctalia-iced"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[features]
+wayland-chrome = ["noctalia-iced/wayland-chrome"]
+
+[dependencies]
+noctalia-iced.workspace = true
+iced = { workspace = true, features = ["tokio"] }
+chrono = "0.4"
+chrono-tz = "0.10"
+png = "0.18"
+tokio = { version = "1", features = ["time"] }
+
+[dev-dependencies]
+iced_test = "0.14"

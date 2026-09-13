@@ -1,0 +1,16 @@
+[package]
+name = "noctalia-iced"
+description = "Noctalia's design language for iced: palette and style tokens, controls and window chrome"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[features]
+# Wayland chrome with the shadow outside the window geometry and maximized/fullscreen/tiled
+# tracking. Requires the patched winit, iced_core and iced_winit (third_party/rust/PATCHES.md).
+wayland-chrome = []
+
+[dependencies]
+iced.workspace = true

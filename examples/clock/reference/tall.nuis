@@ -1,0 +1,13 @@
+# C++ reference for the iced port: a window tall enough to show every control without scrolling.
+wait_frames 10
+snapshot tall.png
+click advanced
+wait_frames 8
+expect_msg Advanced(true)
+click timer_start
+click sw_start
+wait_ms 1300
+click sw_lap
+wait_frames 6
+snapshot tall-active.png
+quit

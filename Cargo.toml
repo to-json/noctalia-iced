@@ -1,0 +1,19 @@
+[workspace]
+resolver = "3"
+members = ["crates/noctalia-iced", "examples/clock"]
+# The patched crates are path dependencies of the opt-in build, not members; chrome-probe is its own
+# workspace.
+exclude = ["third_party"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.88"
+
+[workspace.dependencies]
+iced = { version = "0.14", features = ["canvas", "advanced"] }
+noctalia-iced = { path = "crates/noctalia-iced" }
+
+# Builds use crates.io iced and winit. The `wayland-chrome` feature needs the patched crates in
+# third_party/rust, applied per invocation: `--config third_party/rust/patch.toml` (PATCHES.md).
