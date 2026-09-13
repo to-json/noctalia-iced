@@ -47,6 +47,17 @@ Style iced widgets with the `theme::*_style` functions, compose the Noctalia con
 Without the feature noctalia-iced builds against crates.io iced and winit: the Linux frame fills the
 surface (no shadow margin) and only the maximized state is tracked.
 
+Turning the feature on or off needs no application code changes, as long as the application:
+
+- names the window state `noctalia_iced::chrome::Chrome`, not `iced::window::Chrome` (which only
+  exists in the patched iced);
+- matches `iced::window::Event` with a `_` arm, since the patched iced adds `ChromeChanged`;
+- builds Linux `window::Settings::platform_specific` with `..Default::default()`, since the patched
+  iced adds `shadow_margin`.
+
+The last two apply to the whole application once the patch is in place, whether or not
+noctalia-iced's feature is enabled.
+
 ## Build and test
 
 ```sh
