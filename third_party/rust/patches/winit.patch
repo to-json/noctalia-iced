@@ -1,0 +1,549 @@
+diff -ruN --exclude target --exclude .cargo_vcs_info.json --exclude .cargo-ok winit-0.30.13/src/event.rs winit/src/event.rs
+--- a/winit/src/event.rs	2006-07-23 20:21:28
++++ b/winit/src/event.rs	2026-09-13 15:36:41
+@@ -150,6 +150,24 @@
+ /// Describes an event from a [`Window`].
+ #[derive(Debug, Clone, PartialEq)]
+ pub enum WindowEvent {
++    /// The window states that client-drawn chrome depends on changed.
++    ///
++    /// `shadow_margin` is the transparent margin, in logical pixels, currently kept around the
++    /// window geometry (see `WindowAttributesExtWayland::with_shadow_margin`), and `resize_band`
++    /// the part of it that still receives pointer input. Both are `0` unless the window floats.
++    ///
++    /// ## Platform-specific
++    ///
++    /// - **Wayland:** Emitted after the first configure and whenever a field changes.
++    /// - **Other platforms:** Never emitted.
++    ChromeStateChanged {
++        maximized: bool,
++        fullscreen: bool,
++        tiled: bool,
++        shadow_margin: u32,
++        resize_band: u32,
++    },
++
+     /// The activation token was delivered back and now could be used.
+     #[cfg_attr(not(any(x11_platform, wayland_platform)), allow(rustdoc::broken_intra_doc_links))]
+     /// Delivered in response to [`request_activation_token`].
+diff -ruN --exclude target --exclude .cargo_vcs_info.json --exclude .cargo-ok winit-0.30.13/src/platform/wayland.rs winit/src/platform/wayland.rs
+--- a/winit/src/platform/wayland.rs	2006-07-23 20:21:28
++++ b/winit/src/platform/wayland.rs	2026-09-13 15:36:53
+@@ -106,6 +106,19 @@
+     /// For details about application ID conventions, see the
+     /// [Desktop Entry Spec](https://specifications.freedesktop.org/desktop-entry-spec/desktop-entry-spec-latest.html#desktop-file-id)
+     fn with_name(self, general: impl Into<String>, instance: impl Into<String>) -> Self;
++
++    /// Keep a transparent margin of `margin` logical pixels around the window geometry, for a
++    /// shadow drawn by the application.
++    ///
++    /// It applies while decorations are off and the window floats (not maximized, fullscreen or
++    /// tiled). The margin is excluded from `xdg_surface.set_window_geometry`, and the input
++    /// region is the geometry grown by `min(margin, 10)` pixels so resize handles still work while
++    /// clicks on the rest of the shadow reach the windows below. Requested inner, min and max
++    /// sizes are geometry sizes; the reported inner size is the surface size, margin included.
++    /// Changes are reported through [`WindowEvent::ChromeStateChanged`].
++    ///
++    /// [`WindowEvent::ChromeStateChanged`]: crate::event::WindowEvent::ChromeStateChanged
++    fn with_shadow_margin(self, margin: u32) -> Self;
+ }
+ 
+ impl WindowAttributesExtWayland for WindowAttributes {
+@@ -113,6 +126,12 @@
+     fn with_name(mut self, general: impl Into<String>, instance: impl Into<String>) -> Self {
+         self.platform_specific.name =
+             Some(crate::platform_impl::ApplicationName::new(general.into(), instance.into()));
++        self
++    }
++
++    #[inline]
++    fn with_shadow_margin(mut self, margin: u32) -> Self {
++        self.platform_specific.shadow_margin = margin;
+         self
+     }
+ }
+diff -ruN --exclude target --exclude .cargo_vcs_info.json --exclude .cargo-ok winit-0.30.13/src/platform_impl/linux/mod.rs winit/src/platform_impl/linux/mod.rs
+--- a/winit/src/platform_impl/linux/mod.rs	2006-07-23 20:21:28
++++ b/winit/src/platform_impl/linux/mod.rs	2026-09-13 15:36:46
+@@ -73,6 +73,8 @@
+ pub struct PlatformSpecificWindowAttributes {
+     pub name: Option<ApplicationName>,
+     pub activation_token: Option<ActivationToken>,
++    /// Wayland: transparent margin around the floating window geometry, in logical pixels.
++    pub shadow_margin: u32,
+     #[cfg(x11_platform)]
+     pub x11: X11WindowAttributes,
+ }
+@@ -96,6 +98,7 @@
+         Self {
+             name: None,
+             activation_token: None,
++            shadow_margin: 0,
+             #[cfg(x11_platform)]
+             x11: X11WindowAttributes {
+                 visual_id: None,
+diff -ruN --exclude target --exclude .cargo_vcs_info.json --exclude .cargo-ok winit-0.30.13/src/platform_impl/linux/wayland/event_loop/mod.rs winit/src/platform_impl/linux/wayland/event_loop/mod.rs
+--- a/winit/src/platform_impl/linux/wayland/event_loop/mod.rs	2006-07-23 20:21:28
++++ b/winit/src/platform_impl/linux/wayland/event_loop/mod.rs	2026-09-13 15:37:08
+@@ -398,12 +398,30 @@
+ 
+                         let new_logical_size: LogicalSize<f64> =
+                             physical_size.to_logical(scale_factor);
+-                        window.request_inner_size(new_logical_size.into());
++                        window.request_surface_size(new_logical_size.into());
+                     });
+ 
+                     // Make it queue resize.
+                     compositor_update.resized = true;
+                 }
++            }
++
++            // Report chrome changes before the resize they usually come with, so the user lays
++            // out the new size with the new chrome.
++            if let Some(chrome) = compositor_update.chrome {
++                callback(
++                    Event::WindowEvent {
++                        window_id: crate::window::WindowId(window_id),
++                        event: WindowEvent::ChromeStateChanged {
++                            maximized: chrome.maximized,
++                            fullscreen: chrome.fullscreen,
++                            tiled: chrome.tiled,
++                            shadow_margin: chrome.shadow_margin,
++                            resize_band: chrome.resize_band,
++                        },
++                    },
++                    &self.window_target,
++                );
+             }
+ 
+             // NOTE: Rescale changed the physical size which winit operates in, thus we should
+diff -ruN --exclude target --exclude .cargo_vcs_info.json --exclude .cargo-ok winit-0.30.13/src/platform_impl/linux/wayland/state.rs winit/src/platform_impl/linux/wayland/state.rs
+--- a/winit/src/platform_impl/linux/wayland/state.rs	2006-07-23 20:21:28
++++ b/winit/src/platform_impl/linux/wayland/state.rs	2026-09-13 15:39:39
+@@ -33,7 +33,7 @@
+ use crate::platform_impl::wayland::types::wp_fractional_scaling::FractionalScalingManager;
+ use crate::platform_impl::wayland::types::wp_viewporter::ViewporterState;
+ use crate::platform_impl::wayland::types::xdg_activation::XdgActivationState;
+-use crate::platform_impl::wayland::window::{WindowRequests, WindowState};
++use crate::platform_impl::wayland::window::{ChromeState, WindowRequests, WindowState};
+ use crate::platform_impl::wayland::{WaylandError, WindowId};
+ use crate::platform_impl::OsError;
+ 
+@@ -283,14 +283,20 @@
+         };
+ 
+         // Populate the configure to the window.
+-        self.window_compositor_updates[pos].resized |= self
++        let mut window = self
+             .windows
+             .get_mut()
+             .get_mut(&window_id)
+             .expect("got configure for dead window.")
+             .lock()
+-            .unwrap()
+-            .configure(configure, &self.shm, &self.subcompositor_state);
++            .unwrap();
++        let resized = window.configure(configure, &self.shm, &self.subcompositor_state);
++        let chrome = window.take_chrome_change();
++        drop(window);
++        self.window_compositor_updates[pos].resized |= resized;
++        if chrome.is_some() {
++            self.window_compositor_updates[pos].chrome = chrome;
++        }
+ 
+         // NOTE: configure demands wl_surface::commit, however winit doesn't commit on behalf of the
+         // users, since it can break a lot of things, thus it'll ask users to redraw instead.
+@@ -418,11 +424,14 @@
+ 
+     /// Close the window.
+     pub close_window: bool,
++
++    /// New chrome state to report.
++    pub chrome: Option<ChromeState>,
+ }
+ 
+ impl WindowCompositorUpdate {
+     fn new(window_id: WindowId) -> Self {
+-        Self { window_id, resized: false, scale_changed: false, close_window: false }
++        Self { window_id, resized: false, scale_changed: false, close_window: false, chrome: None }
+     }
+ }
+ 
+diff -ruN --exclude target --exclude .cargo_vcs_info.json --exclude .cargo-ok winit-0.30.13/src/platform_impl/linux/wayland/window/mod.rs winit/src/platform_impl/linux/wayland/window/mod.rs
+--- a/winit/src/platform_impl/linux/wayland/window/mod.rs	2006-07-23 20:21:28
++++ b/winit/src/platform_impl/linux/wayland/window/mod.rs	2026-09-13 15:43:43
+@@ -9,7 +9,7 @@
+ use sctk::reexports::client::protocol::wl_surface::WlSurface;
+ use sctk::reexports::client::{Proxy, QueueHandle};
+ 
+-use sctk::compositor::{CompositorState, Region, SurfaceData};
++use sctk::compositor::SurfaceData;
+ use sctk::reexports::protocols::xdg::activation::v1::client::xdg_activation_v1::XdgActivationV1;
+ use sctk::shell::xdg::window::{Window as SctkWindow, WindowDecorations};
+ use sctk::shell::WaylandSurface;
+@@ -36,7 +36,7 @@
+ 
+ pub(crate) mod state;
+ 
+-pub use state::WindowState;
++pub use state::{ChromeState, WindowState};
+ 
+ /// The Wayland window.
+ pub struct Window {
+@@ -49,9 +49,6 @@
+     /// The state of the window.
+     window_state: Arc<Mutex<WindowState>>,
+ 
+-    /// Compositor to handle WlRegion stuff.
+-    compositor: Arc<CompositorState>,
+-
+     /// The wayland display used solely for raw window handle.
+     #[allow(dead_code)]
+     display: WlDisplay,
+@@ -89,7 +86,6 @@
+         let monitors = state.monitors.clone();
+ 
+         let surface = state.compositor_state.create_surface(&queue_handle);
+-        let compositor = state.compositor_state.clone();
+         let xdg_activation =
+             state.xdg_activation.as_ref().map(|activation_state| activation_state.global().clone());
+         let display = event_loop_window_target.connection.display();
+@@ -116,6 +112,12 @@
+             attributes.preferred_theme,
+         );
+ 
++        // Before the first configure, which sizes the surface around the geometry. The margin is
++        // for client-drawn chrome, so it only applies to windows created without decorations.
++        if !attributes.decorations {
++            window_state.set_shadow_margin(attributes.platform_specific.shadow_margin);
++        }
++
+         // Set transparency hint.
+         window_state.set_transparent(attributes.transparent);
+ 
+@@ -221,7 +223,6 @@
+             display,
+             monitors,
+             window_id,
+-            compositor,
+             window_state,
+             queue_handle,
+             xdg_activation,
+@@ -583,19 +584,13 @@
+ 
+     #[inline]
+     pub fn set_cursor_hittest(&self, hittest: bool) -> Result<(), ExternalError> {
+-        let surface = self.window.wl_surface();
+-
+-        if hittest {
+-            surface.set_input_region(None);
+-            Ok(())
+-        } else {
+-            let region = Region::new(&*self.compositor).map_err(|_| {
+-                ExternalError::Os(os_error!(OsError::Misc("failed to set input region.")))
+-            })?;
+-            region.add(0, 0, 0, 0);
+-            surface.set_input_region(Some(region.wl_region()));
+-            Ok(())
+-        }
++        // The input region also follows the shadow margin, so the window state owns it.
++        self.window_state.lock().unwrap().set_cursor_hittest(hittest).map_err(|_| {
++            ExternalError::Os(os_error!(OsError::Misc("failed to set input region.")))
++        })?;
++        // NOTE: Requires commit to be applied.
++        self.request_redraw();
++        Ok(())
+     }
+ 
+     #[inline]
+diff -ruN --exclude target --exclude .cargo_vcs_info.json --exclude .cargo-ok winit-0.30.13/src/platform_impl/linux/wayland/window/state.rs winit/src/platform_impl/linux/wayland/window/state.rs
+--- a/winit/src/platform_impl/linux/wayland/window/state.rs	2006-07-23 20:21:28
++++ b/winit/src/platform_impl/linux/wayland/window/state.rs	2026-09-13 15:39:32
+@@ -52,6 +52,21 @@
+ // Minimum window inner size.
+ const MIN_WINDOW_SIZE: LogicalSize<u32> = LogicalSize::new(2, 1);
+ 
++/// The widest band of the shadow margin that keeps receiving input, for resize handles.
++const MAX_RESIZE_BAND: u32 = 10;
++
++/// The window states that client-drawn chrome depends on, as reported to the user.
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub struct ChromeState {
++    pub maximized: bool,
++    pub fullscreen: bool,
++    pub tiled: bool,
++    /// The shadow margin currently applied, in logical pixels.
++    pub shadow_margin: u32,
++    /// The part of the margin that receives input, in logical pixels.
++    pub resize_band: u32,
++}
++
+ /// The state of the window which is being updated from the [`WinitState`].
+ pub struct WindowState {
+     /// The connection to Wayland server.
+@@ -124,6 +139,16 @@
+     /// Whether we should decorate the frame.
+     decorate: bool,
+ 
++    /// Transparent margin kept around the window geometry while floating, for a client-drawn
++    /// shadow. `0` when disabled; fixed at creation.
++    shadow_margin: u32,
++
++    /// Whether the surface accepts pointer input (`set_cursor_hittest`).
++    cursor_hittest: bool,
++
++    /// The chrome state last reported to the user.
++    reported_chrome: Option<ChromeState>,
++
+     /// Min size.
+     min_inner_size: LogicalSize<u32>,
+     max_inner_size: Option<LogicalSize<u32>>,
+@@ -193,6 +218,9 @@
+             selected_cursor: Default::default(),
+             cursor_visible: true,
+             decorate: true,
++            shadow_margin: 0,
++            cursor_hittest: true,
++            reported_chrome: None,
+             fractional_scale,
+             frame: None,
+             frame_callback_state: FrameCallbackState::None,
+@@ -271,14 +299,19 @@
+         // should be delivered before the first configure, thus apply it to
+         // properly scale the physical sizes provided by the users.
+         if let Some(initial_size) = self.initial_size.take() {
+-            self.size = initial_size.to_logical(self.scale_factor());
++            // The requested size is the window geometry; the surface adds the shadow margin.
++            let geometry = initial_size.to_logical(self.scale_factor());
++            self.size = add_margin(geometry, self.margin_for(None));
+             self.stateless_size = self.size;
+         }
+ 
++        // No frame is needed while decorations are off; one is created on a later configure if
++        // they are turned on.
+         if let Some(subcompositor) = subcompositor.as_ref().filter(|_| {
+             configure.decoration_mode == DecorationMode::Client
+                 && self.frame.is_none()
+                 && !self.csd_fails
++                && self.decorate
+         }) {
+             match WinitFrame::new(
+                 &self.window,
+@@ -309,6 +342,11 @@
+ 
+         let stateless = Self::is_stateless(&configure);
+ 
++        // Sizes are window geometry sizes until the margin of the new state is added back below.
++        let new_margin = self.margin_for(Some(&configure));
++        let stateless_geometry = sub_margin(self.stateless_size, self.margin_for(None));
++        let current_geometry = sub_margin(self.size, self.applied_margin());
++
+         let (mut new_size, constrain) = if let Some(frame) = self.frame.as_mut() {
+             // Configure the window states.
+             frame.update_state(configure.state);
+@@ -320,14 +358,14 @@
+                     let height = height.map(|h| h.get()).unwrap_or(1);
+                     ((width, height).into(), false)
+                 },
+-                (..) if stateless => (self.stateless_size, true),
+-                _ => (self.size, true),
++                (..) if stateless => (stateless_geometry, true),
++                _ => (current_geometry, true),
+             }
+         } else {
+             match configure.new_size {
+                 (Some(width), Some(height)) => ((width.get(), height.get()).into(), false),
+-                _ if stateless => (self.stateless_size, true),
+-                _ => (self.size, true),
++                _ if stateless => (stateless_geometry, true),
++                _ => (current_geometry, true),
+             }
+         };
+ 
+@@ -378,6 +416,8 @@
+             }
+         }
+ 
++        let new_size = add_margin(new_size, new_margin);
++
+         let new_state = configure.state;
+         let old_state = self.last_configure.as_ref().map(|configure| configure.state);
+ 
+@@ -548,8 +588,9 @@
+             // Restore min/max sizes of the window.
+             self.reload_min_max_hints();
+         } else {
+-            self.set_min_inner_size(Some(self.size));
+-            self.set_max_inner_size(Some(self.size));
++            let geometry = sub_margin(self.size, self.applied_margin());
++            self.set_min_inner_size(Some(geometry));
++            self.set_max_inner_size(Some(geometry));
+         }
+ 
+         // Reload the state on the frame as well.
+@@ -668,16 +709,28 @@
+         }
+     }
+ 
+-    /// Try to resize the window when the user can do so.
++    /// Try to resize the window when the user can do so. The size is the window geometry size;
++    /// the surface adds the shadow margin.
+     pub fn request_inner_size(&mut self, inner_size: Size) -> PhysicalSize<u32> {
++        let geometry = inner_size.to_logical(self.scale_factor());
++        self.request_logical_surface_size(add_margin(geometry, self.applied_margin()))
++    }
++
++    /// Try to resize the surface, shadow margin included, when the user can do so.
++    pub fn request_surface_size(&mut self, surface_size: Size) -> PhysicalSize<u32> {
++        let size = surface_size.to_logical(self.scale_factor());
++        self.request_logical_surface_size(size)
++    }
++
++    fn request_logical_surface_size(&mut self, size: LogicalSize<u32>) -> PhysicalSize<u32> {
+         if self.last_configure.as_ref().map(Self::is_stateless).unwrap_or(true) {
+-            self.resize(inner_size.to_logical(self.scale_factor()))
++            self.resize(size)
+         }
+ 
+         logical_to_physical_rounded(self.inner_size(), self.scale_factor())
+     }
+ 
+-    /// Resize the window to the new inner size.
++    /// Resize the window to the new inner (surface) size.
+     fn resize(&mut self, inner_size: LogicalSize<u32>) {
+         self.size = inner_size;
+ 
+@@ -687,22 +740,26 @@
+         }
+ 
+         // Update the inner frame.
+-        let ((x, y), outer_size) = if let Some(frame) = self.frame.as_mut() {
+-            // Resize only visible frame.
+-            if !frame.is_hidden() {
+-                frame.resize(
+-                    NonZeroU32::new(self.size.width).unwrap(),
+-                    NonZeroU32::new(self.size.height).unwrap(),
+-                );
+-            }
++        let margin = self.applied_margin();
++        let ((x, y), outer_size) = if let Some(frame) =
++            self.frame.as_mut().filter(|frame| !frame.is_hidden())
++        {
++            frame.resize(
++                NonZeroU32::new(self.size.width).unwrap(),
++                NonZeroU32::new(self.size.height).unwrap(),
++            );
+ 
+             (frame.location(), frame.add_borders(self.size.width, self.size.height).into())
+         } else {
+-            ((0, 0), self.size)
++            // The shadow margin, if any, stays outside the window geometry.
++            ((margin as i32, margin as i32), sub_margin(self.size, margin))
+         };
+ 
+-        // Reload the hint.
++        // Reload the hints.
+         self.reload_transparency_hint();
++        if self.reload_input_region().is_err() {
++            warn!("Failed to set input region.");
++        }
+ 
+         // Set the window geometry.
+         self.window.xdg_surface().set_window_geometry(
+@@ -719,6 +776,76 @@
+         }
+     }
+ 
++    /// Set the shadow margin. Must be called before the first configure.
++    pub fn set_shadow_margin(&mut self, margin: u32) {
++        self.shadow_margin = margin;
++    }
++
++    /// The shadow margin for the given configure (`None`: before the first one, or floating).
++    fn margin_for(&self, configure: Option<&WindowConfigure>) -> u32 {
++        match configure {
++            Some(configure) if !Self::is_stateless(configure) => 0,
++            _ => self.shadow_margin,
++        }
++    }
++
++    /// The shadow margin applied for the last configure.
++    fn applied_margin(&self) -> u32 {
++        self.margin_for(self.last_configure.as_ref())
++    }
++
++    /// The chrome state for the last configure.
++    pub fn chrome_state(&self) -> ChromeState {
++        let configure = self.last_configure.as_ref();
++        let margin = self.applied_margin();
++        ChromeState {
++            maximized: configure.is_some_and(WindowConfigure::is_maximized),
++            fullscreen: configure.is_some_and(WindowConfigure::is_fullscreen),
++            tiled: configure.is_some_and(WindowConfigure::is_tiled),
++            shadow_margin: margin,
++            resize_band: margin.min(MAX_RESIZE_BAND),
++        }
++    }
++
++    /// The chrome state, when it differs from the one last reported.
++    pub fn take_chrome_change(&mut self) -> Option<ChromeState> {
++        let chrome = self.chrome_state();
++        if self.reported_chrome == Some(chrome) {
++            return None;
++        }
++        self.reported_chrome = Some(chrome);
++        Some(chrome)
++    }
++
++    /// Set whether the surface accepts pointer input.
++    pub fn set_cursor_hittest(&mut self, hittest: bool) -> Result<(), ()> {
++        self.cursor_hittest = hittest;
++        self.reload_input_region()
++    }
++
++    /// Reissue the input region: empty without hit testing, otherwise the window geometry grown
++    /// by the resize band, so clicks on the rest of the shadow reach the windows below.
++    fn reload_input_region(&self) -> Result<(), ()> {
++        let surface = self.window.wl_surface();
++        let margin = self.applied_margin();
++        if self.cursor_hittest && margin == 0 {
++            surface.set_input_region(None);
++            return Ok(());
++        }
++
++        let region = Region::new(&*self.compositor).map_err(|_| ())?;
++        if self.cursor_hittest {
++            let inset = (margin - margin.min(MAX_RESIZE_BAND)) as i32;
++            let width = (self.size.width as i32 - 2 * inset).max(0);
++            let height = (self.size.height as i32 - 2 * inset).max(0);
++            region.add(inset, inset, width, height);
++        } else {
++            region.add(0, 0, 0, 0);
++        }
++        surface.set_input_region(Some(region.wl_region()));
++        Ok(())
++    }
++
+     /// Get the scale factor of the window.
+     #[inline]
+     pub fn scale_factor(&self) -> f64 {
+@@ -1207,6 +1334,19 @@
+             ResizeDirection::South => XdgResizeEdge::Bottom,
+         }
+     }
++}
++
++/// Grow a geometry size into the surface size around it.
++fn add_margin(size: LogicalSize<u32>, margin: u32) -> LogicalSize<u32> {
++    LogicalSize::new(size.width.saturating_add(2 * margin), size.height.saturating_add(2 * margin))
++}
++
++/// Shrink a surface size to the geometry size inside its margin.
++fn sub_margin(size: LogicalSize<u32>, margin: u32) -> LogicalSize<u32> {
++    LogicalSize::new(
++        size.width.saturating_sub(2 * margin).max(1),
++        size.height.saturating_sub(2 * margin).max(1),
++    )
+ }
+ 
+ // NOTE: Rust doesn't allow `From<Option<Theme>>`.

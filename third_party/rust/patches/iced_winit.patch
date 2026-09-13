@@ -1,0 +1,40 @@
+diff -ruN --exclude target --exclude .cargo_vcs_info.json --exclude .cargo-ok iced_winit-0.14.1/src/conversion.rs iced_winit/src/conversion.rs
+--- a/iced_winit/src/conversion.rs	2006-07-23 20:21:28
++++ b/iced_winit/src/conversion.rs	2026-09-13 15:39:45
+@@ -155,10 +155,12 @@
+         {
+             use winit::platform::wayland::WindowAttributesExtWayland;
+ 
+-            attributes = attributes.with_name(
+-                &settings.platform_specific.application_id,
+-                &settings.platform_specific.application_id,
+-            );
++            attributes = attributes
++                .with_name(
++                    &settings.platform_specific.application_id,
++                    &settings.platform_specific.application_id,
++                )
++                .with_shadow_margin(settings.platform_specific.shadow_margin);
+         }
+     }
+ 
+@@ -352,6 +354,19 @@
+         WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+             Some(Event::Window(window::Event::Rescaled(scale_factor as f32)))
+         }
++        WindowEvent::ChromeStateChanged {
++            maximized,
++            fullscreen,
++            tiled,
++            shadow_margin,
++            resize_band,
++        } => Some(Event::Window(window::Event::ChromeChanged(window::Chrome {
++            maximized,
++            fullscreen,
++            tiled,
++            shadow_margin: shadow_margin as f32,
++            resize_band: resize_band as f32,
++        }))),
+         _ => None,
+     }
+ }

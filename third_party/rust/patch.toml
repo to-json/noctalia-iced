@@ -1,0 +1,10 @@
+# Cargo config applying the patched windowing crates, for builds with the `wayland-chrome` feature:
+#
+#   scripts/with-patches.sh run -p noctalia-clock-iced --features wayland-chrome
+#   cargo --config third_party/rust/patch.toml ...     (rewrites Cargo.lock's winit/iced entries)
+#
+# Cargo resolves paths in a --config file against the parent of the file's directory, third_party/.
+[patch.crates-io]
+winit = { path = "rust/winit" }
+iced_core = { path = "rust/iced_core" }
+iced_winit = { path = "rust/iced_winit" }

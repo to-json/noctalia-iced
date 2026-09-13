@@ -1,0 +1,88 @@
+diff -ruN --exclude target --exclude .cargo_vcs_info.json --exclude .cargo-ok iced_core-0.14.0/src/window/chrome.rs iced_core/src/window/chrome.rs
+--- a/iced_core/src/window/chrome.rs	1969-12-31 18:00:00
++++ b/iced_core/src/window/chrome.rs	2026-09-13 15:37:22
+@@ -0,0 +1,25 @@
++/// The window states that decide how client-drawn chrome (frame, shadow, corners) should look.
++///
++/// Reported through [`Event::ChromeChanged`](crate::window::Event::ChromeChanged).
++#[derive(Debug, Clone, Copy, PartialEq, Default)]
++pub struct Chrome {
++    /// The window is maximized.
++    pub maximized: bool,
++    /// The window is fullscreen.
++    pub fullscreen: bool,
++    /// The window is tiled against at least one edge.
++    pub tiled: bool,
++    /// The transparent margin, in logical pixels, currently kept around the window geometry
++    /// for a client-drawn shadow. `0` unless the window floats.
++    pub shadow_margin: f32,
++    /// The band, in logical pixels, outside the window geometry that still receives pointer
++    /// input, for resize handles. `0` unless the window floats.
++    pub resize_band: f32,
++}
++
++impl Chrome {
++    /// Whether the window floats: not maximized, fullscreen or tiled.
++    pub fn is_floating(&self) -> bool {
++        !(self.maximized || self.fullscreen || self.tiled)
++    }
++}
+diff -ruN --exclude target --exclude .cargo_vcs_info.json --exclude .cargo-ok iced_core-0.14.0/src/window/event.rs iced_core/src/window/event.rs
+--- a/iced_core/src/window/event.rs	2006-07-23 20:21:28
++++ b/iced_core/src/window/event.rs	2026-09-13 15:37:26
+@@ -1,4 +1,5 @@
+ use crate::time::Instant;
++use crate::window::Chrome;
+ use crate::{Point, Size};
+ 
+ use std::path::PathBuf;
+@@ -44,6 +45,14 @@
+ 
+     /// A window was unfocused.
+     Unfocused,
++
++    /// The states that client-drawn chrome depends on changed.
++    ///
++    /// ## Platform-specific
++    ///
++    /// - **Wayland:** Emitted after the first configure and whenever a field changes.
++    /// - **Other platforms:** Never emitted.
++    ChromeChanged(Chrome),
+ 
+     /// A file is being hovered over the window.
+     ///
+diff -ruN --exclude target --exclude .cargo_vcs_info.json --exclude .cargo-ok iced_core-0.14.0/src/window/settings/linux.rs iced_core/src/window/settings/linux.rs
+--- a/iced_core/src/window/settings/linux.rs	2006-07-23 20:21:28
++++ b/iced_core/src/window/settings/linux.rs	2026-09-13 15:37:28
+@@ -14,4 +14,12 @@
+     /// This flag is particularly useful for creating UI elements that need precise
+     /// positioning and immediate display without window manager interference.
+     pub override_redirect: bool,
++
++    /// Wayland: a transparent margin, in logical pixels, kept around the window geometry while
++    /// the window floats and decorations are off, for a client-drawn shadow.
++    ///
++    /// The window size in [`Settings`](crate::window::Settings) stays the geometry size; the
++    /// reported window size includes the margin. See
++    /// [`Event::ChromeChanged`](crate::window::Event::ChromeChanged).
++    pub shadow_margin: u32,
+ }
+diff -ruN --exclude target --exclude .cargo_vcs_info.json --exclude .cargo-ok iced_core-0.14.0/src/window.rs iced_core/src/window.rs
+--- a/iced_core/src/window.rs	2006-07-23 20:21:28
++++ b/iced_core/src/window.rs	2026-09-13 15:37:17
+@@ -3,6 +3,7 @@
+ pub mod screenshot;
+ pub mod settings;
+ 
++mod chrome;
+ mod direction;
+ mod event;
+ mod id;
+@@ -12,6 +13,7 @@
+ mod redraw_request;
+ mod user_attention;
+ 
++pub use chrome::Chrome;
+ pub use direction::Direction;
+ pub use event::Event;
+ pub use icon::Icon;

@@ -1,0 +1,17 @@
+[package]
+name = "chrome-probe"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Standalone: exercises the patched winit/iced_winit/iced_core in ../.
+[workspace]
+
+[dependencies]
+iced = { version = "0.14", features = ["tokio"] }
+png = "0.18"
+
+[patch.crates-io]
+winit = { path = "../winit" }
+iced_core = { path = "../iced_core" }
+iced_winit = { path = "../iced_winit" }
