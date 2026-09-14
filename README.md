@@ -28,6 +28,21 @@ Style iced widgets with the `theme::*_style` functions, compose the Noctalia con
 `widgets`, and wrap the view in `chrome::frame` (forwarding `chrome::events()` and
 `chrome::perform`); `examples/clock/src/app.rs` does all three.
 
+### Palette
+
+The sixteen colour roles live in `theme::Palette`. `theme::palette()` returns the one in force and
+`theme::set_palette` replaces it, so an application can follow the palette the user's Noctalia shell
+is actually running instead of the constants compiled in here:
+
+```rust
+theme::set_palette(theme::Palette { primary, surface, on_surface, ..theme::DEFAULT_PALETTE });
+```
+
+Every style function reads it, so a change reaches the window chrome and the controls alike on the
+next frame; call it again from `update` to follow a live theme change. Until something replaces it
+the palette is `theme::DEFAULT_PALETTE`. The `theme::PRIMARY`-style constants are those defaults, not
+the live values — application code that should follow the user's theme reads `theme::palette()`.
+
 ### Window chrome
 
 - **Linux:** client-side titlebar, frame and resize grips in Noctalia's style.

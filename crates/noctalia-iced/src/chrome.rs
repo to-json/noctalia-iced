@@ -13,7 +13,6 @@
 use crate::theme;
 use crate::widgets::icon;
 use iced::border::{self, Border};
-use iced::font::{Font, Weight};
 use iced::mouse::Interaction;
 use iced::widget::{button, center, column, container, mouse_area, row, space, stack, text};
 use iced::window::{self, Direction};
@@ -110,7 +109,7 @@ pub fn initial() -> Chrome {
 
 /// The surface clear colour: transparent where the shadow margin is ours to paint.
 pub fn background() -> Color {
-    if CLIENT_SIDE { Color::TRANSPARENT } else { theme::SURFACE }
+    if CLIENT_SIDE { Color::TRANSPARENT } else { theme::palette().surface }
 }
 
 /// Window-state updates for [`perform`].
@@ -160,10 +159,10 @@ pub fn frame<'a, M: 'a>(
 
     let floating = chrome.is_floating();
     let surface = container(body).width(Length::Fill).height(Length::Fill).style(move |_| container::Style {
-        background: Some(theme::SURFACE.into()),
-        text_color: Some(theme::ON_SURFACE),
+        background: Some(theme::palette().surface.into()),
+        text_color: Some(theme::palette().on_surface),
         border: if floating {
-            border::rounded(theme::RADIUS_XL).color(theme::OUTLINE).width(theme::BORDER)
+            border::rounded(theme::RADIUS_XL).color(theme::palette().outline).width(theme::BORDER)
         } else {
             Border::default()
         },
@@ -181,8 +180,8 @@ pub fn frame<'a, M: 'a>(
 fn titlebar<'a>(chrome: Chrome, title: &'a str) -> Element<'a, Action> {
     let label = text(title)
         .size(theme::FONT_CAPTION)
-        .font(Font { weight: Weight::Semibold, ..Font::DEFAULT })
-        .color(theme::ON_SURFACE_VARIANT);
+        .font(theme::semibold())
+        .color(theme::palette().on_surface_variant);
     let lead = if MACOS { TRAFFIC_LIGHTS } else { 14.0 };
     let drag = mouse_area(
         container(label).center_y(Length::Fill).width(Length::Fill).padding(Padding { left: lead, ..Padding::ZERO }),
@@ -215,10 +214,10 @@ fn capsule<'a>(glyph: char, action: Action, close: bool) -> Element<'a, Action> 
         .padding(0)
         .style(move |theme, status| {
             let (background, text_color) = match status {
-                button::Status::Hovered if close => (theme::ERROR, theme::ON_HOVER),
-                button::Status::Hovered => (theme::HOVER, theme::ON_HOVER),
-                button::Status::Pressed => (theme::primary(theme), theme::ON_PRIMARY),
-                _ => (Color::TRANSPARENT, theme::ON_SURFACE_VARIANT),
+                button::Status::Hovered if close => (theme::palette().error, theme::palette().on_hover),
+                button::Status::Hovered => (theme::palette().hover, theme::palette().on_hover),
+                button::Status::Pressed => (theme::primary(theme), theme::palette().on_primary),
+                _ => (Color::TRANSPARENT, theme::palette().on_surface_variant),
             };
             button::Style {
                 background: Some(background.into()),

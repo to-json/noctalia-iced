@@ -8,7 +8,6 @@ use iced::widget::{button, center, column, container, row, space, stack, text, t
 use iced::{Alignment, Color, Element, Length, Padding, Point, Radians, Rectangle, Renderer, Size, Theme, Vector};
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
-const SEMIBOLD: iced::Font = iced::Font { weight: iced::font::Weight::Semibold, ..iced::Font::DEFAULT };
 /// Room around the saturation/value square so its marker isn't clipped at the edges.
 const MARKER: f32 = 10.0;
 const HUE_THUMB: f32 = 10.0;
@@ -73,8 +72,8 @@ pub fn toggle<'a, M: Clone + 'a>(on: bool, on_toggle: impl Fn(bool) -> M) -> Ele
     const INSET: f32 = 3.0;
     const TRAVEL: f32 = 16.0;
     let thumb = container(space()).width(THUMB).height(THUMB).style(move |theme: &Theme| container::Style {
-        background: Some(if on { ON_PRIMARY_THUMB } else { theme::SURFACE_VARIANT }.into()),
-        border: iced::border::rounded(THUMB / 2.0).color(if on { theme::primary(theme) } else { theme::OUTLINE }).width(1),
+        background: Some(if on { theme::palette().on_primary } else { theme::palette().surface_variant }.into()),
+        border: iced::border::rounded(THUMB / 2.0).color(if on { theme::primary(theme) } else { theme::palette().outline }).width(1),
         ..container::Style::default()
     });
     let track = container(thumb)
@@ -87,9 +86,9 @@ pub fn toggle<'a, M: Clone + 'a>(on: bool, on_toggle: impl Fn(bool) -> M) -> Ele
             let primary = theme::primary(theme);
             let hovered = matches!(status, button::Status::Hovered);
             button::Style {
-                background: Some(if on { primary } else { theme::OUTLINE }.into()),
+                background: Some(if on { primary } else { theme::palette().outline }.into()),
                 border: iced::border::rounded((THUMB + INSET * 2.0) / 2.0)
-                    .color(if hovered { theme::HOVER } else if on { primary } else { theme::OUTLINE })
+                    .color(if hovered { theme::palette().hover } else if on { primary } else { theme::palette().outline })
                     .width(theme::BORDER),
                 ..button::Style::default()
             }
@@ -97,8 +96,6 @@ pub fn toggle<'a, M: Clone + 'a>(on: bool, on_toggle: impl Fn(bool) -> M) -> Ele
         .on_press(on_toggle(!on))
         .into()
 }
-
-const ON_PRIMARY_THUMB: Color = theme::ON_PRIMARY;
 
 /// `[-] value [+]` on a track (stepper.cpp).
 pub fn stepper<'a, M: Clone + 'a>(
@@ -137,7 +134,7 @@ pub fn collapsible<'a, M: Clone + 'a>(
     body: impl Into<Element<'a, M>>,
 ) -> Element<'a, M> {
     let chevron = icon(if expanded { icon::CHEVRON_UP } else { icon::CHEVRON_DOWN }, theme::FONT_BODY)
-        .color(theme::ON_SURFACE_VARIANT);
+        .color(theme::palette().on_surface_variant);
     let header = button(
         row![text(title).size(theme::FONT_BODY), space().width(Length::Fill), chevron]
             .spacing(theme::SPACE_XS)
@@ -191,7 +188,7 @@ impl<M> canvas::Program<M> for Ring {
 pub fn countdown_ring<'a, M: 'a>(fraction: f32, seconds: u64, size: f32, thickness: f32, color: Color) -> Element<'a, M> {
     stack![
         canvas::Canvas::new(Ring { fraction, thickness, color }).width(size).height(size),
-        center(text(seconds.to_string()).size(size * 0.36).font(SEMIBOLD).color(color)),
+        center(text(seconds.to_string()).size(size * 0.36).font(theme::semibold()).color(color)),
     ]
     .width(size)
     .height(size)
@@ -367,7 +364,7 @@ impl canvas::Program<PickerEvent> for PickerArea {
                 }
                 let marker = Point::new(s * size.width, (1.0 - v) * size.height);
                 frame.stroke(&Path::circle(marker, 10.0), Stroke::default().with_color(Color::WHITE).with_width(2.0));
-                frame.stroke(&Path::rectangle(Point::ORIGIN, size), Stroke::default().with_color(theme::OUTLINE).with_width(theme::BORDER * 2.0));
+                frame.stroke(&Path::rectangle(Point::ORIGIN, size), Stroke::default().with_color(theme::palette().outline).with_width(theme::BORDER * 2.0));
             }
             Area::Hue => {
                 // A 12px strip of 36 swatches, centred in a canvas tall enough for the round thumb.
@@ -398,7 +395,7 @@ pub fn color_picker<'a, M: Clone + 'a>(
 ) -> Element<'a, M> {
     let field = |title: &'a str, input: text_input::TextInput<'a, PickerEvent>, w: f32| -> Element<'a, PickerEvent> {
         column![
-            text(title).size(theme::FONT_CAPTION).color(theme::ON_SURFACE_VARIANT),
+            text(title).size(theme::FONT_CAPTION).color(theme::palette().on_surface_variant),
             input
                 .size(theme::FONT_CAPTION)
                 .padding([7.0, theme::SPACE_SM])

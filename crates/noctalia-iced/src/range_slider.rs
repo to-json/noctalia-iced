@@ -176,7 +176,7 @@ where
             iced::Point::new(bounds.x + PADDING, rail_y),
             Size::new(bounds.width - PADDING * 2.0, RAIL),
         );
-        renderer.fill_quad(quad(rail, iced::border::rounded(RAIL * 0.5)), theme::OUTLINE);
+        renderer.fill_quad(quad(rail, iced::border::rounded(RAIL * 0.5)), theme::palette().outline);
 
         let (low_x, high_x) = (self.x_of(bounds, self.low), self.x_of(bounds, self.high));
         let active = Rectangle::new(iced::Point::new(low_x, rail_y), Size::new(high_x - low_x, RAIL));
@@ -189,9 +189,9 @@ where
                 Size::new(HANDLE, HANDLE),
             );
             let border = iced::border::rounded(HANDLE * 0.5)
-                .color(if hot { theme::HOVER } else { theme::OUTLINE })
+                .color(if hot { theme::palette().hover } else { theme::palette().outline })
                 .width(theme::BORDER);
-            renderer.fill_quad(quad(knob, border), Color { a: 1.0, ..theme::ON_PRIMARY });
+            renderer.fill_quad(quad(knob, border), Color { a: 1.0, ..theme::palette().on_primary });
         }
     }
 
