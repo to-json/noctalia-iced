@@ -129,14 +129,25 @@ pub const RADIUS_MD: f32 = 6.0;
 pub const RADIUS_LG: f32 = 9.0;
 pub const RADIUS_XL: f32 = 12.0;
 pub const BORDER: f32 = 1.0;
+/// The weight an element is marked with rather than outlined in: a selection bar, a live edge.
+pub const BORDER_EMPHASIZED: f32 = 3.0;
+pub const FOCUS_RING: f32 = 2.0;
 pub const SPACE_XS: f32 = 4.0;
 pub const SPACE_SM: f32 = 8.0;
 pub const SPACE_MD: f32 = 12.0;
+pub const SPACE_LG: f32 = 16.0;
+/// Inside a card or a panel, which want a little more room than [`SPACE_MD`] and less than a
+/// doubled [`SPACE_SM`] would give the two axes separately.
+pub const CARD_PADDING: f32 = 14.0;
+pub const PANEL_PADDING: f32 = 14.0;
+pub const FONT_MINI: f32 = 11.0;
 pub const FONT_CAPTION: f32 = 13.0;
 pub const FONT_BODY: f32 = 14.0;
 pub const FONT_TITLE: f32 = 16.0;
 pub const FONT_HEADER: f32 = 20.0;
+pub const CONTROL_HEIGHT_SM: f32 = 32.0;
 pub const CONTROL_HEIGHT: f32 = 38.0;
+pub const CONTROL_HEIGHT_LG: f32 = 44.0;
 const DISABLED_ALPHA: f32 = 0.5;
 
 pub const ICON_FONT: Font = Font::with_name("noctalia-tabler-icons");
@@ -186,27 +197,57 @@ pub enum ButtonVariant {
     Selected,
 }
 
+/// Whether two roles resolve to the same colour, within what a channel can express.
+fn indistinguishable(a: Color, b: Color) -> bool {
+    let close = |x: f32, y: f32| (x - y).abs() * 255.0 < 1.0;
+    close(a.r, b.r) && close(a.g, b.g) && close(a.b, b.b) && close(a.a, b.a)
+}
+
+/// The fill and text a control takes under the pointer, given what it already shows.
+///
+/// [`Palette::hover`] is the role for this, and is what it returns nearly always. But a palette is
+/// free to set `hover` to the same colour as `primary` — Everforest-derived ones do — and then an
+/// accent-filled button would have no hover at all: it would look identical whether the pointer was
+/// on it or not. Where that happens the other accent stands in, so every control changes under the
+/// pointer in every palette.
+pub fn hover_pair(rest: Color) -> (Color, Color) {
+    let palette = palette();
+    if indistinguishable(palette.hover, rest) {
+        (palette.secondary, palette.on_secondary)
+    } else {
+        (palette.hover, palette.on_hover)
+    }
+}
+
 pub fn button_style(variant: ButtonVariant) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |theme, status| {
         let primary = primary(theme);
+        // What the button shows at rest is also what its hover has to differ from.
+        let rest = match variant {
+            ButtonVariant::Selected | ButtonVariant::Primary => (primary, Color::TRANSPARENT, palette().on_primary),
+            ButtonVariant::Default => (palette().surface_variant, palette().outline, palette().on_surface),
+            ButtonVariant::Tab => (Color::TRANSPARENT, Color::TRANSPARENT, palette().on_surface),
+        };
         let (background, border_color, text_color) = match (variant, status) {
+            // Selected is a state rather than an action, and stays put under the pointer.
             (ButtonVariant::Selected, _) => (primary, primary, palette().on_primary),
-            (_, button::Status::Hovered) => (palette().hover, Color::TRANSPARENT, palette().on_hover),
+            (_, button::Status::Hovered) => {
+                let (background, text) = hover_pair(rest.0);
+                (background, Color::TRANSPARENT, text)
+            }
             (_, button::Status::Pressed) => (primary, primary, palette().on_primary),
             (ButtonVariant::Default, button::Status::Disabled) => (
                 alpha(palette().surface_variant, DISABLED_ALPHA),
                 alpha(palette().outline, DISABLED_ALPHA),
                 alpha(palette().on_surface, DISABLED_ALPHA),
             ),
-            (ButtonVariant::Default, _) => (palette().surface_variant, palette().outline, palette().on_surface),
             (ButtonVariant::Primary, button::Status::Disabled) => {
                 (alpha(primary, DISABLED_ALPHA), Color::TRANSPARENT, palette().on_primary)
             }
-            (ButtonVariant::Primary, _) => (primary, Color::TRANSPARENT, palette().on_primary),
             (ButtonVariant::Tab, button::Status::Disabled) => {
                 (Color::TRANSPARENT, Color::TRANSPARENT, alpha(palette().on_surface, DISABLED_ALPHA))
             }
-            (ButtonVariant::Tab, _) => (Color::TRANSPARENT, Color::TRANSPARENT, palette().on_surface),
+            _ => rest,
         };
         let width = if variant == ButtonVariant::Default { BORDER } else { 0.0 };
         button::Style {

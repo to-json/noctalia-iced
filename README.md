@@ -24,6 +24,12 @@ iced::application(App::new, App::update, App::view)
     .run()
 ```
 
+`theme::hover_pair` is the one piece of logic in here rather than a lookup: `hover` is the role for
+what a control shows under the pointer, but a palette may set it to the same colour as `primary`
+(Everforest-derived ones do), which would leave an accent-filled button looking identical hovered or
+not. Where that happens the other accent stands in, so every control changes under the pointer in
+every palette. `button_style` uses it.
+
 Style iced widgets with the `theme::*_style` functions, compose the Noctalia controls from
 `widgets`, and wrap the view in `chrome::frame` (forwarding `chrome::events()` and
 `chrome::perform`); `examples/clock/src/app.rs` does all three.
@@ -42,6 +48,43 @@ Every style function reads it, so a change reaches the window chrome and the con
 next frame; call it again from `update` to follow a live theme change. Until something replaces it
 the palette is `theme::DEFAULT_PALETTE`. The `theme::PRIMARY`-style constants are those defaults, not
 the live values — application code that should follow the user's theme reads `theme::palette()`.
+
+### Motion
+
+`motion` carries noctalia-shell's animation durations (`src/ui/style.h`: `animFast` 100 ms,
+`animNormal` 200 ms, `animSlow` 400 ms) and the curves this library animates on. noctalia-shell
+animates through Qt, whose easing curves have no iced equivalent to port, so the curves are this
+library's own. Noctalia's motion is *soft*: things arrive slightly past where they are going and
+settle back, rather than snapping or bouncing.
+
+| Curve | Overshoot | For |
+|---|---|---|
+| `SPRING` | ~7% | Short travel: indicators, badges, avatars, anything under ~60 px |
+| `SETTLE` | ~2% | Whole surfaces: panes arriving, banners opening |
+| `GLIDE` | none | Colour, and anything that must land exactly |
+
+`motion::spring_animation` and its two siblings build an `iced::Animation` already on the right
+curve and duration. `motion::Replay` is the one-shot counterpart: an arrival that plays again from
+the beginning every time its content changes, where an `Animation` would transition from wherever it
+had got to. `mix`, `lerp` and `stagger` are the value helpers.
+
+```rust
+let mut selected = motion::spring_animation(0.0_f32);   // moves from wherever it is
+selected.go_mut(3.0, now);
+
+let mut arrival = motion::Replay::settled(motion::SETTLE, motion::NORMAL);
+arrival.restart(now);                                   // plays again from the start
+```
+
+Every constructor honours `motion::reduced()`, so setting `NOCTALIA_REDUCE_MOTION` collapses each
+animation to a millisecond and an application built on these gets a reduced-motion mode for free.
+`NOCTALIA_MOTION_SCALE` multiplies every duration (0.1–20): an overshoot that is too much at 200 ms
+is obvious at 2 s, and invisible in a screenshot at either.
+
+iced has no opacity, and no transform that survives clipping — `float` moves its content into an
+overlay, where it draws over its neighbours. So the vocabulary here is layout and colour: animate
+padding, width and height, and blend towards the surface colour with `mix`. The renderer clips and
+hit-tests the result exactly as it does a still frame.
 
 ### Window chrome
 

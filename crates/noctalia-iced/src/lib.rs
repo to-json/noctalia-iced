@@ -3,6 +3,8 @@
 //! - [`theme`]: palette roles and style tokens from noctalia-shell, and style functions for iced's
 //!   widgets. `primary` travels in the iced [`Theme`](iced::Theme) palette, so restyling the accent
 //!   is `theme::noctalia(color)`.
+//! - [`motion`]: noctalia-shell's animation durations, and the soft spring curves this library
+//!   animates on. Honours a reduced-motion environment.
 //! - [`widgets`]: Noctalia controls iced has no direct equivalent for (segmented, toggle, stepper,
 //!   collapsible, countdown ring, spinner, graph, colour picker) plus the settings-row helpers.
 //! - [`range_slider()`]: a two-handle slider.
@@ -20,6 +22,7 @@
 //!   crates.io iced.
 
 pub mod chrome;
+pub mod motion;
 pub mod range_slider;
 pub mod theme;
 pub mod widgets;
