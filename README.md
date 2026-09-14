@@ -7,7 +7,7 @@ shaders or SDFs; everything is stock iced.
 
 | Path | What |
 |---|---|
-| `crates/noctalia-iced` | The library: `theme`, `widgets`, `range_slider`, `chrome`, the Tabler icon font |
+| `crates/noctalia-iced` | The library: `theme`, `motion`, `widgets`, `range_slider`, `keymap`, `list`, `chrome`, the Tabler icon font |
 | `examples/clock` | `noctalia-clock-iced`: libnoctalia-ui's clock demo on the library, with `iced_test` UI tests |
 | `third_party/rust` | Optional winit, iced_core and iced_winit patches for Wayland chrome ([`PATCHES.md`](third_party/rust/PATCHES.md)) |
 | `nix/wayland-check.nix` | The clock under headless weston: screenshots, a compositor capture, the protocol trace |
@@ -86,12 +86,52 @@ overlay, where it draws over its neighbours. So the vocabulary here is layout an
 padding, width and height, and blend towards the surface colour with `mix`. The renderer clips and
 hit-tests the result exactly as it does a still frame.
 
+### Keys
+
+`keymap` is a table of key sequences: `j`, `gg`, `3j`, `<C-k>`. iced hands an application one press
+at a time, which is enough for accelerators and not enough for a modal interface, so a `Keymap` maps
+specs to actions and a `Pending` holds the few keystrokes somebody is part-way through.
+
+```rust
+let keys = Keymap::new().counted().bind("j", Down).bind("gg", Top).bind("<C-k>", Palette);
+match keys.press(&mut pending, &key, modifiers) {
+    Resolved::Action(action, count) => ...,   // `3j` arrives as (Down, 3)
+    Resolved::Pending => ...,                 // half-typed; `pending.typed()` says what
+    Resolved::Ignored => ...,                 // nobody's key
+}
+```
+
+There is no mode in the library: an application holds one `Keymap` per focus region and picks one
+per press, which is both simpler than a mode stack and what it actually wants. Insert mode needs
+nothing at all — iced reports a press a focused text input consumed as `Status::Captured`, so
+filtering on that keeps typing out of the keymap. `Keymap::conflicts` reports any binding that is a
+prefix of another, which is the one rule the table has to keep.
+
+### Long lists
+
+`list` is a windowed list: fixed-height rows, only the visible ones built. iced lays out everything
+inside a `scrollable`, so a column of fifty thousand rows is fifty thousand widgets measured every
+frame. The way out is arithmetic rather than a new widget — `list::window` says which rows are on
+screen, and `list::windowed` builds those with two spacers standing in for the rest, so the
+scrollbar and anything stacked over the rows still measure the whole list.
+
+```rust
+let window = list::window(rows.len(), pitch, offset, viewport);
+let body = list::windowed(window, pitch, gap, window.range().map(|i| row(i)));
+// `list::reveal` is the shortest scroll that brings a row fully into view, or None.
+```
+
 ### Window chrome
 
 - **Linux:** client-side titlebar, frame and resize grips in Noctalia's style.
 - **macOS:** the native frame with a transparent titlebar (AppKit can't interactively resize a
   borderless window); the title row is drawn under the traffic lights.
 - **Elsewhere:** native decorations.
+
+`chrome::frame` wraps the window content. `chrome::frame_with` is the same with the application's
+own controls between the title and the window buttons — a surface switcher, say — built from
+`chrome::capsule`, the 28x28 button the titlebar is already made of. The drag region splits around
+them, so an empty titlebar still drags from everywhere.
 
 ### Features
 

@@ -149,10 +149,34 @@ pub fn frame<'a, M: 'a>(
     content: impl Into<Element<'a, M>>,
     on_action: fn(Action) -> M,
 ) -> Element<'a, M> {
+    dressed(chrome, titlebar(chrome, title, None, on_action), content, on_action)
+}
+
+/// [`frame`] with the application's own controls between the title and the window buttons.
+///
+/// `leading` emits the application's messages rather than an [`Action`], which is the whole reason
+/// this exists: a control that switches what the window is showing is not a window operation. The
+/// drag region is split around it, so an empty titlebar still drags from everywhere it used to.
+pub fn frame_with<'a, M: 'a>(
+    chrome: Chrome,
+    title: &'a str,
+    leading: impl Into<Element<'a, M>>,
+    content: impl Into<Element<'a, M>>,
+    on_action: fn(Action) -> M,
+) -> Element<'a, M> {
+    dressed(chrome, titlebar(chrome, title, Some(leading.into()), on_action), content, on_action)
+}
+
+fn dressed<'a, M: 'a>(
+    chrome: Chrome,
+    titlebar: Element<'a, M>,
+    content: impl Into<Element<'a, M>>,
+    on_action: fn(Action) -> M,
+) -> Element<'a, M> {
     if !CLIENT_SIDE && !MACOS {
         return content.into();
     }
-    let body = column![titlebar(chrome, title).map(on_action), content.into()];
+    let body = column![titlebar, content.into()];
     if MACOS {
         return body.into();
     }
@@ -177,37 +201,60 @@ pub fn frame<'a, M: 'a>(
     if floating { stack![framed, resize_handles(chrome).map(on_action)].into() } else { framed.into() }
 }
 
-fn titlebar<'a>(chrome: Chrome, title: &'a str) -> Element<'a, Action> {
-    let label = text(title)
-        .size(theme::FONT_CAPTION)
-        .font(theme::semibold())
-        .color(theme::palette().on_surface_variant);
+/// The titlebar: the title, whatever the application put beside it, and the window controls.
+///
+/// The parts that operate the window are built as [`Action`] and mapped, so an application whose
+/// own message type is not `Clone` still gets a draggable titlebar — `mouse_area` needs `Clone`,
+/// and `Action` has it.
+fn titlebar<'a, M: 'a>(
+    chrome: Chrome,
+    title: &'a str,
+    leading: Option<Element<'a, M>>,
+    on_action: fn(Action) -> M,
+) -> Element<'a, M> {
+    let label =
+        text(title).size(theme::FONT_CAPTION).font(theme::semibold()).color(theme::palette().on_surface_variant);
     let lead = if MACOS { TRAFFIC_LIGHTS } else { 14.0 };
-    let drag = mouse_area(
-        container(label).center_y(Length::Fill).width(Length::Fill).padding(Padding { left: lead, ..Padding::ZERO }),
-    )
-    .on_press(Action::Drag)
-    .on_double_click(Action::ToggleMaximize)
-    .on_right_press(Action::SystemMenu);
+    // Every part of the bar that is not a button drags the window, so the region is built twice:
+    // once hugging the title, once filling whatever is left after the application's controls.
+    let grip = |content: Element<'a, Action>, width: Length| -> Element<'a, Action> {
+        mouse_area(container(content).center_y(Length::Fill).width(width))
+            .on_press(Action::Drag)
+            .on_double_click(Action::ToggleMaximize)
+            .on_right_press(Action::SystemMenu)
+            .into()
+    };
+    let titled = container(label).padding(Padding { left: lead, right: theme::SPACE_SM, ..Padding::ZERO });
 
-    let mut bar = row![drag].height(TITLEBAR).align_y(Alignment::Center);
+    let mut bar = row![].height(TITLEBAR).align_y(Alignment::Center);
+    match leading {
+        // With nothing beside it the title's own region fills the bar, exactly as it always did.
+        None => bar = bar.push(grip(titled.into(), Length::Fill).map(on_action)),
+        Some(leading) => {
+            bar = bar.push(grip(titled.into(), Length::Shrink).map(on_action));
+            bar = bar.push(leading);
+            bar = bar.push(grip(space().into(), Length::Fill).map(on_action));
+        }
+    }
     if CLIENT_SIDE {
         let restore = if chrome.maximized { theme::icon::SQUARES } else { theme::icon::SQUARE };
-        bar = bar.push(
-            row![
-                capsule(theme::icon::MINUS, Action::Minimize, false),
-                capsule(restore, Action::ToggleMaximize, false),
-                capsule(theme::icon::X, Action::Close, true),
-            ]
-            .spacing(theme::SPACE_XS)
-            .padding([0.0, 6.0]),
-        );
+        let controls = row![
+            capsule(theme::icon::MINUS, Action::Minimize, false),
+            capsule(restore, Action::ToggleMaximize, false),
+            capsule(theme::icon::X, Action::Close, true),
+        ]
+        .spacing(theme::SPACE_XS)
+        .padding([0.0, 6.0]);
+        bar = bar.push(Element::from(controls).map(on_action));
     }
     bar.into()
 }
 
-/// Titlebar buttons: bare at rest, the hover role under the pointer (error for close).
-fn capsule<'a>(glyph: char, action: Action, close: bool) -> Element<'a, Action> {
+/// A titlebar button: 28x28, bare at rest, the hover role under the pointer (error for close).
+///
+/// Public because a switcher beside the title should be the same button as the ones beside Close,
+/// down to the corner radius — it is the one control the titlebar has.
+pub fn capsule<'a, M: Clone + 'a>(glyph: char, message: M, close: bool) -> Element<'a, M> {
     button(center(icon(glyph, theme::FONT_BODY)))
         .width(28)
         .height(28)
@@ -226,7 +273,7 @@ fn capsule<'a>(glyph: char, action: Action, close: bool) -> Element<'a, Action> 
                 ..button::Style::default()
             }
         })
-        .on_press(action)
+        .on_press(message)
         .into()
 }
 

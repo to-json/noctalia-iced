@@ -14,8 +14,10 @@
 //! titlebar included, is built from that one answer.
 
 use iced::border::{self, Border};
-use iced::widget::{button, checkbox, container, overlay::menu, pick_list, radio, scrollable, slider, text_input};
 use iced::font::Weight;
+use iced::widget::{
+    button, checkbox, container, overlay::menu, pick_list, radio, scrollable, slider, text_editor, text_input,
+};
 use iced::{Background, Color, Font, Shadow, Theme, Vector, color};
 use std::sync::RwLock;
 
@@ -352,7 +354,11 @@ pub fn pick_list_style(_: &Theme, status: pick_list::Status) -> pick_list::Style
         placeholder_color: alpha(palette().on_surface_variant, 0.7),
         handle_color: palette().on_surface_variant,
         background: palette().surface_variant.into(),
-        border: Border { color: if hot { palette().hover } else { palette().outline }, width: BORDER, radius: RADIUS_MD.into() },
+        border: Border {
+            color: if hot { palette().hover } else { palette().outline },
+            width: BORDER,
+            radius: RADIUS_MD.into(),
+        },
     }
 }
 
@@ -391,11 +397,32 @@ pub fn scrollable_style(_: &Theme, status: scrollable::Status) -> scrollable::St
     }
 }
 
+/// A multi-line field. Same edge and same selection as [`text_input_style`], so a form that has
+/// both does not look like it was assembled from two kits.
+pub fn text_editor_style(theme: &Theme, status: text_editor::Status) -> text_editor::Style {
+    let focused = matches!(status, text_editor::Status::Focused { .. });
+    text_editor::Style {
+        background: palette().surface_variant.into(),
+        border: Border {
+            color: if focused { palette().hover } else { palette().outline },
+            width: BORDER,
+            radius: RADIUS_MD.into(),
+        },
+        placeholder: alpha(palette().on_surface_variant, 0.7),
+        value: palette().on_surface,
+        selection: alpha(primary(theme), 0.35),
+    }
+}
+
 pub fn text_input_style(theme: &Theme, status: text_input::Status) -> text_input::Style {
     let focused = matches!(status, text_input::Status::Focused { .. });
     text_input::Style {
         background: palette().surface_variant.into(),
-        border: Border { color: if focused { palette().hover } else { palette().outline }, width: BORDER, radius: RADIUS_MD.into() },
+        border: Border {
+            color: if focused { palette().hover } else { palette().outline },
+            width: BORDER,
+            radius: RADIUS_MD.into(),
+        },
         icon: palette().on_surface_variant,
         placeholder: alpha(palette().on_surface_variant, 0.7),
         value: palette().on_surface,
