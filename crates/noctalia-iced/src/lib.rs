@@ -6,6 +6,8 @@
 //! - [`motion`]: noctalia-shell's animation durations, and the soft spring curves this library
 //!   animates on. Honours a reduced-motion environment.
 //! - [`keymap`]: table-driven key sequences with counts and prefixes, for a modal interface.
+//! - [`fuzzy`]: an `fzf`-shaped match scorer.
+//! - [`picker`]: a fuzzy-filtered overlay — a command palette or a quick-open, over any `T`.
 //! - [`list`]: a windowed list, for a list too long to lay out all of.
 //! - [`widgets`]: Noctalia controls iced has no direct equivalent for (segmented, toggle, stepper,
 //!   collapsible, countdown ring, spinner, graph, colour picker) plus the settings-row helpers.
@@ -24,9 +26,11 @@
 //!   crates.io iced.
 
 pub mod chrome;
+pub mod fuzzy;
 pub mod keymap;
 pub mod list;
 pub mod motion;
+pub mod picker;
 pub mod range_slider;
 pub mod theme;
 pub mod widgets;
