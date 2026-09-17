@@ -14,3 +14,5 @@ wayland-chrome = []
 
 [dependencies]
 iced.workspace = true
+serde.workspace = true
+serde_json.workspace = true

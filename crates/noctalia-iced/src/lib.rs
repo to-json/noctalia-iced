@@ -1,5 +1,6 @@
 //! Noctalia's design language for [iced](https://iced.rs).
 //!
+//! - [`palette`]: live synchronization with the Noctalia desktop theme via shell templates.
 //! - [`theme`]: palette roles and style tokens from noctalia-shell, and style functions for iced's
 //!   widgets. `primary` travels in the iced [`Theme`](iced::Theme) palette, so restyling the accent
 //!   is `theme::noctalia(color)`.
@@ -30,6 +31,7 @@ pub mod fuzzy;
 pub mod keymap;
 pub mod list;
 pub mod motion;
+pub mod palette;
 pub mod picker;
 pub mod range_slider;
 pub mod theme;
