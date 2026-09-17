@@ -1,16 +1,13 @@
 # noctalia-iced
 
-Noctalia's design language for [iced](https://iced.rs) 0.14: the palette roles and style tokens of
-[noctalia-shell](https://github.com/noctalia-dev/noctalia-shell), Noctalia's controls built from iced
-widgets and canvas programs, and window chrome that looks like the rest of a Noctalia desktop. No
-shaders or SDFs; everything is stock iced.
+what if your iced apps matched your noctalia shell
 
 | Path | What |
 |---|---|
-| `crates/noctalia-iced` | The library: `theme`, `motion`, `widgets`, `range_slider`, `keymap`, `list`, `chrome`, the Tabler icon font |
-| `examples/clock` | `noctalia-clock-iced`: libnoctalia-ui's clock demo on the library, with `iced_test` UI tests |
-| `third_party/rust` | Optional winit, iced_core and iced_winit patches for Wayland chrome ([`PATCHES.md`](third_party/rust/PATCHES.md)) |
-| `nix/wayland-check.nix` | The clock under headless weston: screenshots, a compositor capture, the protocol trace |
+| `crates/noctalia-iced` | library |
+| `examples/clock` | `noctalia-clock-iced`, the reference app |
+| `third_party/rust` | Optional winit, iced_core and iced_winit patches for Wayland chrome |
+| `nix/wayland-check.nix` | clock-based integration test |
 
 ## Using the library
 
@@ -24,49 +21,28 @@ iced::application(App::new, App::update, App::view)
     .run()
 ```
 
-`theme::hover_pair` is the one piece of logic in here rather than a lookup: `hover` is the role for
-what a control shows under the pointer, but a palette may set it to the same colour as `primary`
-(Everforest-derived ones do), which would leave an accent-filled button looking identical hovered or
-not. Where that happens the other accent stands in, so every control changes under the pointer in
-every palette. `button_style` uses it.
-
-Style iced widgets with the `theme::*_style` functions, compose the Noctalia controls from
-`widgets`, and wrap the view in `chrome::frame` (forwarding `chrome::events()` and
-`chrome::perform`); `examples/clock/src/app.rs` does all three.
+you can pass an accent color that isn't used for a ton, but otherwise you get:
 
 ### Palette
 
-The sixteen colour roles live in `theme::Palette`. `theme::palette()` returns the one in force and
-`theme::set_palette` replaces it, so an application can follow the palette the user's Noctalia shell
-is actually running instead of the constants compiled in here:
+the palette passed by the noctalia template. you may need to go enable this in noctalia for your
+app. sometime soon (possibly already) this will be one template for all the noctalia-iced apps
+on a box
 
 ```rust
 theme::set_palette(theme::Palette { primary, surface, on_surface, ..theme::DEFAULT_PALETTE });
 ```
 
-Every style function reads it, so a change reaches the window chrome and the controls alike on the
-next frame; call it again from `update` to follow a live theme change. Until something replaces it
-the palette is `theme::DEFAULT_PALETTE`. The `theme::PRIMARY`-style constants are those defaults, not
-the live values — application code that should follow the user's theme reads `theme::palette()`.
-
 ### Motion
 
-`motion` carries noctalia-shell's animation durations (`src/ui/style.h`: `animFast` 100 ms,
-`animNormal` 200 ms, `animSlow` 400 ms) and the curves this library animates on. noctalia-shell
-animates through Qt, whose easing curves have no iced equivalent to port, so the curves are this
-library's own. Noctalia's motion is *soft*: things arrive slightly past where they are going and
-settle back, rather than snapping or bouncing.
+we got some lil' motion guides
 
 | Curve | Overshoot | For |
 |---|---|---|
-| `SPRING` | ~7% | Short travel: indicators, badges, avatars, anything under ~60 px |
-| `SETTLE` | ~2% | Whole surfaces: panes arriving, banners opening |
-| `GLIDE` | none | Colour, and anything that must land exactly |
+| `SPRING` | ~7% | lil stuff |
+| `SETTLE` | ~2% | big stuff |
+| `GLIDE` | none | precise stuff |
 
-`motion::spring_animation` and its two siblings build an `iced::Animation` already on the right
-curve and duration. `motion::Replay` is the one-shot counterpart: an arrival that plays again from
-the beginning every time its content changes, where an `Animation` would transition from wherever it
-had got to. `mix`, `lerp` and `stagger` are the value helpers.
 
 ```rust
 let mut selected = motion::spring_animation(0.0_f32);   // moves from wherever it is
@@ -76,50 +52,51 @@ let mut arrival = motion::Replay::settled(motion::SETTLE, motion::NORMAL);
 arrival.restart(now);                                   // plays again from the start
 ```
 
-Every constructor honours `motion::reduced()`, so setting `NOCTALIA_REDUCE_MOTION` collapses each
-animation to a millisecond and an application built on these gets a reduced-motion mode for free.
-`NOCTALIA_MOTION_SCALE` multiplies every duration (0.1–20): an overshoot that is too much at 200 ms
-is obvious at 2 s, and invisible in a screenshot at either.
-
-iced has no opacity, and no transform that survives clipping — `float` moves its content into an
-overlay, where it draws over its neighbours. So the vocabulary here is layout and colour: animate
-padding, width and height, and blend towards the surface colour with `mix`. The renderer clips and
-hit-tests the result exactly as it does a still frame.
-
 ### Keys
 
-`keymap` is a table of key sequences: `j`, `gg`, `3j`, `<C-k>`. iced hands an application one press
-at a time, which is enough for accelerators and not enough for a modal interface, so a `Keymap` maps
-specs to actions and a `Pending` holds the few keystrokes somebody is part-way through.
-
-```rust
-let keys = Keymap::new().counted().bind("j", Down).bind("gg", Top).bind("<C-k>", Palette);
-match keys.press(&mut pending, &key, modifiers) {
-    Resolved::Action(action, count) => ...,   // `3j` arrives as (Down, 3)
-    Resolved::Pending => ...,                 // half-typed; `pending.typed()` says what
-    Resolved::Ignored => ...,                 // nobody's key
-}
-```
-
-There is no mode in the library: an application holds one `Keymap` per focus region and picks one
-per press, which is both simpler than a mode stack and what it actually wants. Insert mode needs
-nothing at all — iced reports a press a focused text input consumed as `Status::Captured`, so
-filtering on that keeps typing out of the keymap. `Keymap::conflicts` reports any binding that is a
-prefix of another, which is the one rule the table has to keep.
+We got some kinda convoluted key handling available. you may prefer to just use iced here;
+the idea was maybe you want to integrate with noctalia keyboard shortcuts somehow, but, it's
+not there yet
 
 ### Long lists
 
-`list` is a windowed list: fixed-height rows, only the visible ones built. iced lays out everything
-inside a `scrollable`, so a column of fifty thousand rows is fifty thousand widgets measured every
-frame. The way out is arithmetic rather than a new widget — `list::window` says which rows are on
-screen, and `list::windowed` builds those with two spacers standing in for the rest, so the
-scrollbar and anything stacked over the rows still measure the whole list.
+lil pagination trick that came in handy
 
 ```rust
 let window = list::window(rows.len(), pitch, offset, viewport);
 let body = list::windowed(window, pitch, gap, window.range().map(|i| row(i)));
 // `list::reveal` is the shortest scroll that brings a row fully into view, or None.
 ```
+
+
+## Build and test
+
+```sh
+cargo run --release -p noctalia-clock-iced -- --fixed-time 2026-09-13T10:08:30Z --zone UTC
+cargo test --workspace
+
+# With the patched crates (applied through --config; Cargo.lock is restored afterwards)
+scripts/with-patches.sh run --release -p noctalia-clock-iced --features wayland-chrome
+scripts/with-patches.sh test --workspace --features noctalia-clock-iced/wayland-chrome
+
+# Linux checks (Docker on macOS); output in out/<check>
+scripts/linux.sh clock-wayland          # patched
+scripts/linux.sh clock-wayland-stock    # from crates.io
+scripts/linux.sh chrome-probe           # the windowing patches alone
+```
+
+`nix develop` devshell; 
+`nix build` build the clock 
+
+## Provenance
+
+so i stole this whole style wholesale from noctalia's source. i'm not sure what to do here;
+i needed a way to make apps that match, i don't want to push them in a direction. so, it's just,
+here.
+
+I don't feel like rewriting the following llm generated text, nor deleting it.
+
+begin
 
 ### Window chrome
 
@@ -156,38 +133,4 @@ Turning the feature on or off needs no application code changes, as long as the 
 The last two apply to the whole application once the patch is in place, whether or not
 noctalia-iced's feature is enabled.
 
-## Build and test
-
-```sh
-cargo run --release -p noctalia-clock-iced -- --fixed-time 2026-09-13T10:08:30Z --zone UTC
-cargo test --workspace
-
-# With the patched crates (applied through --config; Cargo.lock is restored afterwards)
-scripts/with-patches.sh run --release -p noctalia-clock-iced --features wayland-chrome
-scripts/with-patches.sh test --workspace --features noctalia-clock-iced/wayland-chrome
-
-# Linux checks (Docker on macOS); output in out/<check>
-scripts/linux.sh clock-wayland          # wayland-chrome
-scripts/linux.sh clock-wayland-stock    # crates.io iced and winit
-scripts/linux.sh chrome-probe           # the windowing patches alone
-```
-
-`nix develop` gives a Linux devshell; `nix build` builds the clock (`.#noctalia-clock-iced-chrome`
-with the feature). After changing dependencies, `scripts/patched-lock.sh` refreshes
-`third_party/rust/Cargo.patched.lock`, the lockfile the patched Nix build uses.
-
-## Known issues
-
-- Mesa's software rasterizers (llvmpipe GL and lavapipe Vulkan, as in the headless weston check)
-  drop MSAA canvas geometry and canvas text once the surface is taller than about 1024px; width
-  doesn't matter. Tall windows render correctly with `--no-antialiasing`, and on Metal with MSAA.
-  Hardware Linux drivers are untested.
-- Wayland chrome is verified in headless weston only: tiled state, un-maximizing, fractional scale
-  and interactive resize in the shadow band are untested.
-- The `iced_test` snapshots were recorded on macOS/Metal; delete `examples/clock/snapshots/` to
-  re-baseline on another renderer.
-
-## Provenance
-
-Extracted from libnoctalia-ui (`examples/clock-iced` and `third_party/rust` at `ea8e6ab`), where the
-C++ toolkit and its clock demo live. See `NOTICE` for bundled components.
+end
